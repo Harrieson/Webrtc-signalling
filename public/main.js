@@ -8,7 +8,7 @@ let remoteVideo = document.getElementById("remote video")
 
 let roomNumber, localStream, remoteStream, rtcPeerConnection, isCaller;
 
-let iceServer = {
+let iceServers = {
     "iceServer": [
         { 'urls': 'stun:stun.services.mozilla.com' },
         { 'urls': 'stun:stun.l.google.com:19302' }
@@ -20,19 +20,91 @@ const streamConstraints = {
     video: true
 }
 
+const socket = io()
+
+
 btnGoRoom.onclick = () => {
     if (inputRoomNumber.value === '') {
         alert("please enter a room name")
     } else {
-        navigator.mediaDevices.getUserMedia(streamConstraints)
-            .then(stream => {
-                localStream = stream
-                localVideo.srcObject = stream
-            })
-            .catch(err => {
-                console.log('an error occurred,', err)
-            })
+        roomNumber = inputRoomNumber.value
+        socket.emit('create or join', roomNumber)
         divSelectRoom.style = "display: none"
         divConsultingRoom.style = "display: block"
     }
 }
+
+socket.on('created', room => {
+    navigator.mediaDevices.getUserMedia(streamConstraints)
+        .then(stream => {
+            localStream = stream
+            localVideo.srcObject = stream
+            isCaller = true
+        })
+        .catch(err => {
+            console.log('an error occurred,', err)
+        })
+})
+socket.on('joined', room => {
+    navigator.mediaDevices.getUserMedia(streamConstraints)
+        .then(stream => {
+            localStream = stream
+            localVideo.srcObject = stream
+            socket.emit('ready', roomNumber)
+        })
+        .catch(err => {
+            console.log('an error occurred,', err)
+        })
+})
+
+//Handler for ready message
+
+socket.on('ready', () => {
+    if (isCaller) {
+        rtcPeerConnection = new RTCPeerConnection(iceServers)
+        rtcPeerConnection.onicecandidate = onIceCandidate
+        rtcPeerConnection.ontrack = onAddStream
+        rtcPeerConnection.addTrack(localStream.getTracks()[0], localStream)
+        rtcPeerConnection.addTrack(localStream.getTracks()[1], localStream)
+        rtcPeerConnection.createOffer()
+            .then(sessionDescription => {
+                rtcPeerConnection.setLocalDescription(sessionDescription)
+                socket.emit('offer', {
+                    type: 'offer',
+                    sdp: sessionDescription,
+                    room: roomNumber
+                })
+            }).
+        catch(err => {
+            console.log(err)
+        })
+    }
+})
+
+socket.on('offer', (event) => {
+    if (!isCaller) {
+        rtcPeerConnection = new RTCPeerConnection(iceServers)
+        rtcPeerConnection.onicecandidate = onIceCandidate
+        rtcPeerConnection.ontrack = onAddStream
+        rtcPeerConnection.addTrack(localStream.getTracks()[0], localStream)
+        rtcPeerConnection.addTrack(localStream.getTracks()[1], localStream)
+        rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(event))
+        rtcPeerConnection.createAnswer()
+            .then(sessionDescription => {
+                rtcPeerConnection.setLocalDescription(sessionDescription)
+                socket.emit('answer', {
+                    type: 'answer',
+                    sdp: sessionDescription,
+                    room: roomNumber
+                })
+            }).
+        catch(err => {
+            console.log(err)
+        })
+    }
+})
+
+
+socket.on('answer', event => {
+    rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(event))
+})
