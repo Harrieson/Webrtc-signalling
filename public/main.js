@@ -108,3 +108,35 @@ socket.on('offer', (event) => {
 socket.on('answer', event => {
     rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(event))
 })
+socket.on('candidate', event => {
+    const candidate = new RTCIceCandidate({
+        sdpMLineIndex: event.label,
+        candidate: event.candidate
+    })
+    rtcPeerConnection.addIceCandidate(candidate)
+})
+
+//Add Stream Function
+function onAddStream(event) {
+    remoteVideo.srcObject = event.streams[0]
+    remoteStream = event.streams[0]
+}
+
+
+//Handling on ice Function
+
+
+function onIceCandidate(event) {
+    if (event.candidate) {
+        console.log('sending ice candidate', event.candidate);
+        socket.emit(
+            'candidate', {
+                type: 'candidate',
+                label: event.candidate.sdpMLineIndex,
+                id: event.candidate.sdpMid,
+                candidate: event.candidate.candidate,
+                room: roomNumber
+            }
+        )
+    }
+}
